@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, CreditCard, User, Car, MapPin, Clock } from 'lucide-react';
+import { Calendar, User, Car, MapPin, Clock } from 'lucide-react';
 import { useCarContext } from '../contexts/CarContext';
 import { useBookingContext } from '../contexts/BookingContext';
 import { useAuth } from '../contexts/AuthContext';
+import RouteMapModal from '../components/RouteMapModal';
 
 const BookingPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,20 +13,21 @@ const BookingPage: React.FC = () => {
   const { createBooking } = useBookingContext();
   const { user } = useAuth();
 
-  // --- UPDATED: Default to 'pay-later' ---
   const [bookingData, setBookingData] = useState({
     startDate: '',
     endDate: '',
-    paymentMethod: 'pay-later' as 'razorpay' | 'pay-later'
   });
 
   const [customerDetails, setCustomerDetails] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    phone: user?.phone || ''
+    phone: user?.phone || '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [carLocation, setCarLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const car = getCarById(id!);
 
@@ -42,7 +44,7 @@ const BookingPage: React.FC = () => {
       setCustomerDetails({
         name: user.name,
         email: user.email,
-        phone: user.phone
+        phone: user.phone,
       });
     }
   }, [user, car, navigate]);
@@ -76,17 +78,18 @@ const BookingPage: React.FC = () => {
         setLoading(false);
         return;
       }
+
       const success = await createBooking({
         carId: car._id,
         ownerId: car.ownerId._id,
         startDate: bookingData.startDate,
         endDate: bookingData.endDate,
         totalAmount,
-        paymentMethod: bookingData.paymentMethod,
+        paymentMethod: 'pay-later',
       });
 
       if (success) {
-        alert('Booking successful! Redirecting to your dashboard.');
+        alert('Booking successful! You can pay when you pick up the car. Redirecting to your dashboard.');
         navigate('/customer-dashboard');
       } else {
         setError('Booking failed. The car might already be booked for these dates.');
@@ -101,9 +104,33 @@ const BookingPage: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name === 'name' || name === 'email' || name === 'phone') {
-      setCustomerDetails(prev => ({ ...prev, [name]: value }));
+      setCustomerDetails((prev) => ({ ...prev, [name]: value }));
     } else {
-      setBookingData(prev => ({ ...prev, [name]: value as any }));
+      setBookingData((prev) => ({ ...prev, [name]: value as any }));
+    }
+  };
+
+  const handleShowMap = async () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const userLoc = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setUserLocation(userLoc);
+
+        try {
+          const response = await fetch(`http://localhost:5000/api/cars/${car._id}/location`, {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('carzi_token')}`,
+            },
+          });
+          const data = await response.json();
+          setCarLocation(data);
+          setShowMapModal(true);
+        } catch (err) {
+          setError('Failed to fetch car location.');
+        }
+      });
+    } else {
+      setError('Geolocation is not supported by your browser.');
     }
   };
 
@@ -156,45 +183,6 @@ const BookingPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center"><CreditCard className="h-5 w-5 mr-2 text-blue-600" />Payment Method</h3>
-                <div className="space-y-3">
-                  
-                  {/* --- THIS IS THE UPDATED SECTION --- */}
-                  <label className="flex items-center p-4 border border-gray-200 rounded-lg cursor-not-allowed opacity-50">
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value="razorpay"
-                      checked={false} // Always unchecked
-                      onChange={handleInputChange}
-                      className="mr-3"
-                      disabled // Disable the radio button
-                    />
-                    <div>
-                      <div className="font-medium">Pay Online (Razorpay)</div>
-                      <div className="text-sm text-gray-600">Secure online payment with cards, UPI, wallets</div>
-                      <div className="text-xs text-red-500 font-semibold mt-1">Currently unavailable</div>
-                    </div>
-                  </label>
-                  
-                  <label className="flex items-center p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value="pay-later"
-                      checked={bookingData.paymentMethod === 'pay-later'}
-                      onChange={handleInputChange}
-                      className="mr-3"
-                    />
-                    <div>
-                      <div className="font-medium">Pay Later</div>
-                      <div className="text-sm text-gray-600">Pay cash when you pick up the car</div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
               <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
                 {loading ? 'Processing...' : `Confirm Booking - ₹${totalAmount}`}
               </button>
@@ -235,10 +223,20 @@ const BookingPage: React.FC = () => {
                   ))}
                 </div>
               </div>
+              <button onClick={handleShowMap} className="w-full mt-4 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-semibold hover:bg-gray-300">
+                Show Pickup Location
+              </button>
             </div>
           </div>
         </div>
       </div>
+      {showMapModal && userLocation && carLocation && (
+        <RouteMapModal
+          userLocation={userLocation}
+          carLocation={carLocation}
+          onClose={() => setShowMapModal(false)}
+        />
+      )}
     </div>
   );
 };

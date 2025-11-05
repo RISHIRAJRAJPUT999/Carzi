@@ -15,10 +15,13 @@ import {
   CheckCircle,
   ShieldCheck,
   Download,
+  Map,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useCarContext } from '../contexts/CarContext';
 import { useBookingContext } from '../contexts/BookingContext';
+import TrackingMapModal from '../components/dashboard/TrackingMapModal';
+import LocationPickerMap from '../components/LocationPickerMap';
 
 // ---- Types ----
 interface ICar {
@@ -65,6 +68,10 @@ type CarForm = {
   seats: number;
   pricePerDay: number;
   location: string;
+  locationCoords: {
+    lat: number;
+    lng: number;
+  };
   features: string[];
   description: string;
   carNumber: string;
@@ -80,6 +87,7 @@ const CarOwnerDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings'>('overview');
   const [showAddCarForm, setShowAddCarForm] = useState(false);
   const [editingCar, setEditingCar] = useState<ICar | null>(null);
+  const [trackingCar, setTrackingCar] = useState<ICar | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -95,6 +103,10 @@ const CarOwnerDashboard: React.FC = () => {
     seats: 5,
     pricePerDay: 0,
     location: 'Indore',
+    locationCoords: {
+      lat: 22.719568,
+      lng: 75.857727,
+    },
     features: [],
     description: '',
     carNumber: '',
@@ -115,10 +127,21 @@ const CarOwnerDashboard: React.FC = () => {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    const numericFields = ['year', 'seats', 'pricePerDay'];
-    const nextValue: any = numericFields.includes(name) ? Number(value) : value;
+    const numericFields = ['year', 'seats', 'pricePerDay', 'locationCoords.lat', 'locationCoords.lng'];
 
-    setCarFormData((prev) => ({ ...prev, [name]: nextValue }));
+    setCarFormData((prev) => {
+      const newFormData = { ...prev };
+      if (name.startsWith('locationCoords.')) {
+        const coord = name.split('.')[1];
+        newFormData.locationCoords = {
+          ...newFormData.locationCoords,
+          [coord]: Number(value),
+        };
+      } else {
+        (newFormData as any)[name] = numericFields.includes(name) ? Number(value) : value;
+      }
+      return newFormData;
+    });
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,6 +217,7 @@ const CarOwnerDashboard: React.FC = () => {
       seats: car.seats,
       pricePerDay: car.pricePerDay,
       location: car.location,
+      locationCoords: car.locationCoords || { lat: 0, lng: 0 },
       description: car.description || '',
       features: car.features || [],
       carNumber: car.carNumber || '',
@@ -451,6 +475,13 @@ const CarOwnerDashboard: React.FC = () => {
                               <Trash2 className="h-4 w-4" />
                               <span>Delete</span>
                             </button>
+                            <button
+                              onClick={() => setTrackingCar(car)}
+                              className="flex-1 bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-700 flex items-center justify-center space-x-1"
+                            >
+                              <Map className="h-4 w-4" />
+                              <span>Track Car</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -704,6 +735,22 @@ const CarOwnerDashboard: React.FC = () => {
                       />
                     </div>
 
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Pickup Location on Map
+                      </label>
+                      <LocationPickerMap
+                        initialLat={carFormData.locationCoords.lat}
+                        initialLng={carFormData.locationCoords.lng}
+                        onLocationSelect={(lat, lng) => {
+                          setCarFormData((prev) => ({
+                            ...prev,
+                            locationCoords: { lat, lng },
+                          }));
+                        }}
+                      />
+                    </div>
+
                     {/* Number plate */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -870,6 +917,10 @@ const CarOwnerDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {trackingCar && (
+          <TrackingMapModal car={trackingCar} token={token} onClose={() => setTrackingCar(null)} />
         )}
       </div>
     </div>

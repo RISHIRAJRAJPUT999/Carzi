@@ -12,6 +12,10 @@ const CarSchema = new mongoose.Schema({
     seats: { type: Number, required: true },
     pricePerDay: { type: Number, required:true },
     location: { type: String, required: true },
+    locationCoords: {
+        lat: { type: Number, required: true },
+        lng: { type: Number, required: true },
+    },
     carNumber: { type: String, required: true, unique: true },
     hasInsurance: { type: Boolean, default: false },
     insuranceExpiryDate: { type: Date },

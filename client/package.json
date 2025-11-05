@@ -10,16 +10,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.21",
     "cloudinary": "^2.7.0",
     "express-fileupload": "^1.5.2",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
     "multer": "^2.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "react-leaflet-cluster": "^3.1.1",
     "react-router-dom": "^7.7.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@types/leaflet.markercluster": "^1.5.4",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

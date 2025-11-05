@@ -9,7 +9,9 @@ const UserSchema = new mongoose.Schema({
     password: { type: String, required: true },
     type: { type: String, enum: ['customer', 'car-owner', 'admin'], required: true },
     aadhaar: { type: String, unique: true, sparse: true }, // This line is correct
-    verified: { type: Boolean, default: false }
+    verified: { type: Boolean, default: false },
+    resetPasswordToken: String,
+    resetPasswordExpire: Date
 }, { timestamps: true });
 
 // Password hashing logic

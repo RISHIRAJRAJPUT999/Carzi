@@ -5,6 +5,27 @@ import SearchBar from '../components/SearchBar';
 import CarCard from '../components/CarCard';
 import { useCarContext } from '../contexts/CarContext';
 import Footer from '../components/Footer';
+import RoutingMachine from '../components/RoutingMachine';
+
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { CircleMarker } from 'react-leaflet';
+import L from 'leaflet';
+
+import MarkerClusterGroup from "react-leaflet-cluster";
+import 'leaflet/dist/leaflet.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
+import 'leaflet/dist/leaflet.css';
+
+// Custom Car Icon
+const carIcon = new L.Icon({
+  iconUrl: 'https://static.thenounproject.com/png/710491-200.png', // Google Maps-like car icon from user provided URL
+  iconSize: [35, 35],
+  iconAnchor: [17, 35],
+  popupAnchor: [0, -35],
+});
+
+
 
 // Array of background images
 const heroImages = [
@@ -21,6 +42,8 @@ const Homepage: React.FC = () => {
   const { cars, searchCars } = useCarContext();
   const [filteredCars, setFilteredCars] = useState(cars);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedCarLocation, setSelectedCarLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [filters, setFilters] = useState({
     brand: '',
     priceRange: [0, 10000],
@@ -39,6 +62,24 @@ const Homepage: React.FC = () => {
     }, 3000); // Change image every 3 seconds
     
     return () => clearInterval(timer); // Cleanup the timer
+  }, []);
+
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Error getting user location:", error);
+        }
+      );
+    } else {
+      console.log("Geolocation is not supported by this browser.");
+    }
   }, []);
 
   const handleSearch = (searchFilters: any) => {
@@ -64,6 +105,18 @@ const Homepage: React.FC = () => {
         return 0;
     }
   });
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in kilometers
+    return distance.toFixed(2);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -211,6 +264,70 @@ const Homepage: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Map Section */}
+      <section className="py-16 bg-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-center mb-8">Pickup Location</h2>
+          <div className="rounded-lg shadow-lg overflow-hidden relative z-0">
+                          <MapContainer
+                            center={[22.719568, 75.857727]} // Centered on Indore
+                            zoom={12}
+                            style={{ height: '500px', width: '100%' }}
+                          >
+                            <TileLayer
+                              attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                            <MarkerClusterGroup>
+                              {cars.map((car) => (
+                                car.locationCoords && car.locationCoords.lat && car.locationCoords.lng ? (
+                                  <Marker
+                                    key={car._id}
+                                    position={[car.locationCoords.lat, car.locationCoords.lng]}
+                                    icon={carIcon}
+                                    eventHandlers={{
+                                      click: () => {
+                                        setSelectedCarLocation(car.locationCoords);
+                                      },
+                                    }}
+                                  >
+                                    <Popup
+                                      onClose={() => {
+                                        setSelectedCarLocation(null);
+                                      }}
+                                    >
+                                      <div className="font-bold text-lg mb-1">{car.title}</div>
+                                      <div className="text-sm text-gray-700 mb-2">
+                                        {car.brand} {car.model} ({car.year})
+                                      </div>
+                                      <div className="text-md font-semibold text-teal-600 mb-2">
+                                        ₹{car.pricePerDay} / day
+                                      </div>
+                                      {userLocation && (
+                                        <div className="text-xs text-gray-500">
+                                          Distance from you: {getDistance(userLocation.lat, userLocation.lng, car.locationCoords.lat, car.locationCoords.lng)} km
+                                        </div>
+                                      )}
+                                      <Link to={`/car/${car._id}`} className="text-blue-500 hover:underline text-sm mt-2 block">
+                                        View Details
+                                      </Link>
+                                    </Popup>
+                                  </Marker>
+                                ) : null
+                              ))}
+                            </MarkerClusterGroup>
+                            {userLocation && (
+                              <CircleMarker center={[userLocation.lat, userLocation.lng]} radius={8} pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.7 }}>
+                                <Popup>You are here</Popup>
+                              </CircleMarker>
+                            )}
+                            {userLocation && selectedCarLocation && (
+                              <RoutingMachine start={userLocation} end={selectedCarLocation} />
+                            )}            </MapContainer>
           </div>
         </div>
       </section>

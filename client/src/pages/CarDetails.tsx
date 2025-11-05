@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Star, Users, Fuel, Settings, MapPin, Calendar, Shield, Phone, Mail, ShieldCheck } from 'lucide-react';
 import { useCarContext } from '../contexts/CarContext';
@@ -8,10 +8,34 @@ const CarDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getCarById } = useCarContext();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [selectedImage, setSelectedImage] = useState(0);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState('');
 
   const car = getCarById(id!);
+
+  // Fetch reviews
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/api/cars/${id}/reviews`);
+        const data = await response.json();
+        if (response.ok) {
+          setReviews(data);
+        } else {
+          console.error('Failed to fetch reviews:', data.message);
+        }
+      } catch (err) {
+        console.error('Error fetching reviews:', err);
+      }
+    };
+    if (id) {
+      fetchReviews();
+    }
+  }, [id]);
 
   if (!car) {
     return (
@@ -32,6 +56,58 @@ const CarDetails: React.FC = () => {
       return;
     }
     navigate(`/booking/${car._id}`);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingReview(true);
+    setReviewError('');
+
+    if (!user || !token) {
+      setReviewError('You must be logged in to submit a review.');
+      setSubmittingReview(false);
+      return;
+    }
+
+    if (newReview.rating === 0) {
+      setReviewError('Please provide a rating.');
+      setSubmittingReview(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/cars/${car._id}/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(newReview),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Refetch reviews to update the list and car rating
+        const updatedReviewsResponse = await fetch(`http://localhost:5000/api/cars/${car._id}/reviews`);
+        const updatedReviewsData = await updatedReviewsResponse.json();
+        setReviews(updatedReviewsData);
+
+        // Optionally, refetch car details to update average rating and review count
+        // This would require a method in useCarContext to refetch a single car
+        // For now, we'll rely on the backend to update car.rating and car.reviews
+        // and assume the next fetch of all cars will pick it up.
+
+        setNewReview({ rating: 0, comment: '' }); // Clear form
+      } else {
+        setReviewError(data.message || 'Failed to submit review.');
+      }
+    } catch (err) {
+      console.error('Error submitting review:', err);
+      setReviewError('An error occurred. Please try again.');
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   const images = car.images && car.images.length > 0 
@@ -155,6 +231,67 @@ const CarDetails: React.FC = () => {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Reviews Section */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h3 className="text-lg font-semibold mb-4">Customer Reviews ({car.reviews})</h3>
+
+              {user && user.type === 'customer' && (
+                <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                  <h4 className="font-medium mb-3">Write a Review</h4>
+                  {reviewError && <div className="text-red-500 text-sm mb-2">{reviewError}</div>}
+                  <form onSubmit={handleSubmitReview}>
+                    <div className="flex items-center mb-3">
+                      <span className="mr-2 text-gray-700">Your Rating:</span>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`h-6 w-6 cursor-pointer ${newReview.rating >= star ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+                          onClick={() => setNewReview({ ...newReview, rating: star })}
+                        />
+                      ))}
+                    </div>
+                    <textarea
+                      className="w-full p-2 border rounded-lg mb-3 focus:ring-blue-500 focus:border-blue-500"
+                      rows={3}
+                      placeholder="Share your experience..."
+                      value={newReview.comment}
+                      onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
+                      required
+                    ></textarea>
+                    <button
+                      type="submit"
+                      disabled={submittingReview || newReview.rating === 0 || newReview.comment.trim() === ''}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submittingReview ? 'Submitting...' : 'Submit Review'}
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {reviews.length === 0 ? (
+                <p className="text-gray-600">No reviews yet. Be the first to review this car!</p>
+              ) : (
+                <div className="space-y-4">
+                  {reviews.map((review) => (
+                    <div key={review._id} className="border-b pb-4 last:border-b-0">
+                      <div className="flex items-center mb-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={`h-4 w-4 ${review.rating >= star ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+                          />
+                        ))}
+                        <span className="ml-2 text-sm font-medium text-gray-800">{review.user.name}</span>
+                      </div>
+                      <p className="text-gray-700 leading-relaxed mb-1">{review.comment}</p>
+                      <p className="text-xs text-gray-500">{new Date(review.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

@@ -3,11 +3,15 @@ import { Calendar, Car, Clock, CreditCard, MapPin, Star, User, Phone, Mail, Down
 import { useAuth } from '../contexts/AuthContext';
 import { useBookingContext } from '../contexts/BookingContext';
 import { useCarContext } from '../contexts/CarContext';
+import RouteMapModal from '../components/RouteMapModal';
 
 const CustomerDashboard: React.FC = () => {
   const { user, token } = useAuth(); // <-- GET TOKEN for API calls
   const { getBookingsByCustomer } = useBookingContext();
   const [activeTab, setActiveTab] = useState('bookings');
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [selectedCarLocation, setSelectedCarLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   if (!user) {
     return (
@@ -44,6 +48,35 @@ const CustomerDashboard: React.FC = () => {
     } catch (error) {
         console.error("Invoice download error:", error);
         alert("Could not download the invoice.");
+    }
+  };
+
+  const handleShowMap = async (carId: string) => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const userLoc = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setUserLocation(userLoc);
+
+        try {
+          const response = await fetch(`http://localhost:5000/api/cars/${carId}/location`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch car location.');
+          }
+
+          const data = await response.json();
+          setSelectedCarLocation(data);
+          setShowMapModal(true);
+        } catch (err) {
+          alert('Failed to fetch car location.');
+        }
+      });
+    } else {
+      alert('Geolocation is not supported by your browser.');
     }
   };
 
@@ -164,6 +197,13 @@ const CustomerDashboard: React.FC = () => {
                                   <Download className="h-4 w-4 mr-2" />
                                   Download Invoice
                               </button>
+                              <button 
+                                onClick={() => handleShowMap(car._id)}
+                                className="mt-2 ml-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                              >
+                                  <MapPin className="h-4 w-4 mr-2" />
+                                  Show Pickup Location
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -198,6 +238,13 @@ const CustomerDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+      {showMapModal && userLocation && selectedCarLocation && (
+        <RouteMapModal
+          userLocation={userLocation}
+          carLocation={selectedCarLocation}
+          onClose={() => setShowMapModal(false)}
+        />
+      )}
     </div>
   );
 };

@@ -5,6 +5,7 @@ const OTP = require('../models/OTP');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 require('dotenv').config();
 
@@ -173,3 +174,96 @@ router.post('/login', [
 
 
 module.exports = router;
+
+// @route   POST /api/auth/forgot-password
+// @desc    Request password reset link
+// @access  Public
+router.post('/forgot-password', [
+    body('email').isEmail().withMessage('Please enter a valid email')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const { email } = req.body;
+
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User with that email does not exist.' });
+        }
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(20).toString('hex');
+        user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+        user.resetPasswordExpire = Date.now() + 3600000; // 1 hour
+
+        await user.save();
+
+        // Create reset URL
+        const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+
+        const message = `
+            You are receiving this email because you (or someone else) has requested the reset of a password.
+            Please make a PUT request to: \n\n ${resetUrl}
+            This link will expire in 1 hour.
+        `;
+
+        try {
+            await transporter.sendMail({
+                from: `"Carzi" <${process.env.EMAIL_USER}>`,
+                to: user.email,
+                subject: 'Password Reset Request',
+                text: message,
+                html: `<p>You are receiving this email because you (or someone else) has requested the reset of a password.</p>
+                       <p>Please click on this link to reset your password: <a href="${resetUrl}">${resetUrl}</a></p>
+                       <p>This link will expire in 1 hour.</p>`
+            });
+
+            res.status(200).json({ success: true, message: 'Email sent successfully' });
+        } catch (err) {
+            console.error("❌ Error sending reset email:", err);
+            user.resetPasswordToken = undefined;
+            user.resetPasswordExpire = undefined;
+            await user.save();
+            return res.status(500).json({ success: false, message: 'Email could not be sent' });
+        }
+
+    } catch (err) {
+        console.error("❌ Forgot Password Error:", err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// @route   PUT /api/auth/reset-password/:token
+// @desc    Reset user password
+// @access  Public
+router.put('/reset-password/:token', [
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const resetPasswordToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    try {
+        const user = await User.findOne({
+            resetPasswordToken,
+            resetPasswordExpire: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+        }
+
+        user.password = req.body.password;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+        await user.save();
+
+        res.status(200).json({ success: true, message: 'Password reset successfully' });
+
+    } catch (err) {
+        console.error("❌ Reset Password Error:", err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});

@@ -22,6 +22,10 @@ interface Car {
   seats: number;
   pricePerDay: number;
   location: string;
+  locationCoords: {
+    lat: number;
+    lng: number;
+  };
   images: string[];
   features: string[];
   available: boolean;
@@ -83,7 +87,12 @@ export const CarProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const formData = new FormData();
     Object.entries(carData).forEach(([key, value]) => {
-      formData.append(key, String(value));
+      if (key === 'locationCoords') {
+        formData.append('locationCoords[lat]', String(value.lat));
+        formData.append('locationCoords[lng]', String(value.lng));
+      } else {
+        formData.append(key, String(value));
+      }
     });
     formData.append('ownerId', user.id);
     for (let i = 0; i < imageFiles.length; i++) {
@@ -148,7 +157,18 @@ export const CarProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   
   const searchCars = (filters: any) => {
-    return cars; // Placeholder
+    let filtered = [...cars];
+
+    if (filters.brand) {
+      filtered = filtered.filter(car => car.brand === filters.brand);
+    }
+
+    if (filters.priceRange) {
+      filtered = filtered.filter(car => car.pricePerDay >= filters.priceRange[0] && car.pricePerDay <= filters.priceRange[1]);
+    }
+
+    // Sorting is handled in Homepage.tsx
+    return filtered;
   };
 
   const value = {
